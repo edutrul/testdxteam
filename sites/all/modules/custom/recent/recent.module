@@ -1,0 +1,132 @@
+<?php
+/**
+ * @file List blogs and other customization.
+ * recent.module
+ */
+
+/**
+ * Implements hook_block_info().
+ */
+function recent_block_info() {
+  $blocks['recent_content'] = array(
+    'info' => t('Recent Articles'),
+    'cache' => DRUPAL_NO_CACHE,
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function recent_block_view($delta = '') {
+  $block = array();
+
+  switch ($delta) {
+    case 'recent_content':
+      drupal_add_js(drupal_get_path('module', 'recent') . '/js/recent.js');
+      drupal_add_css(drupal_get_path('module', 'recent') . '/css/recent.css');
+      $block['subject'] = t('Latest Articles');
+      $block['content'] = _recent_get_latest_articles();
+      break;
+  }
+
+  return $block;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function recent_menu() {
+  $items['recent-articles'] = array(
+    'title' => 'Blog',
+    'page callback' => '_recent_articles_page',
+    'access callback' => TRUE,
+  );
+
+  return $items;
+}
+
+/**
+ * Callback to get recent article pages in HTML format.
+ * 
+ * @return string
+ *   The HTML of articles pages.
+ */
+function _recent_articles_page() {
+  $blog_html = &drupal_static(__FUNCTION__);
+  if (!isset($blog_html)) {
+    $cache = cache_get('recent_cache_blog_list');
+    if (empty($cache->data)) {
+      $blog_posts = array();
+      $query = new EntityFieldQuery();
+      $query->entityCondition('entity_type', 'node')
+        ->propertyCondition('status', 1);
+      $result = $query->execute();
+
+      if (!empty($result['node'])) {
+        $nids = array_keys($result['node']);
+        foreach ($nids as $nid) {
+          $node = node_load($nid, NULL, TRUE);
+          $blog_post = new stdClass();
+          $blog_post->nid = $node->nid;
+          $blog_post->title = $node->title;
+          $blog_post->body_value = $node->body[$node->language][0]['value'];
+          $blog_posts[] = $blog_post;
+        }
+      }
+      $blog_html = theme('blog_page', array('blog_posts' => $blog_posts));
+      cache_set('recent_cache_blog_list', $blog_html);
+    }
+    else {
+      $blog_html = $cache->data; // ¡Se guardó un valor en la memoria externa!
+    }
+  }
+  return $blog_html;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function recent_theme($existing, $type, $theme, $path) {
+  return array(
+    'blog_page' => array(
+      'template' => 'blog-page',
+      'path' => $path . '/templates',
+      'type' => 'theme',
+      'variables' => array(
+        'blog_posts' => array(),
+      ),
+    ),
+  );
+}
+
+/**
+ * Helper function to get the latest content.
+ */
+function _recent_get_latest_articles() {
+  $latest_article_html = &drupal_static(__FUNCTION__);
+  if (!isset($latest_article_html)) {
+    $cache = cache_get('recent_cache_latest_blog_list');
+    if (empty($cache->data)) {
+      $nodes = db_select('node', 'n')
+        ->fields('n', array('title', 'nid'))
+        ->condition('status', NODE_PUBLISHED)
+        ->range(0, 5)
+        ->execute()
+        ->fetchAll();
+
+      $items = array();
+      foreach ($nodes as $node) {
+        $items[] = l($node->title, 'node/' . $node->nid);
+      }
+      
+      $latest_article_html = theme('item_list', array('items' => $items));
+      cache_set('recent_cache_latest_blog_list', $latest_article_html);
+    }
+    else {
+      $latest_article_html = $cache->data; // ¡Se guardó un valor en la memoria externa!
+    }
+  }
+  return $latest_article_html;
+}
