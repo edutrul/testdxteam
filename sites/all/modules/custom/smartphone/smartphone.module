@@ -1,0 +1,57 @@
+<?php
+/**
+ * @file smartphone feature customization.
+ * smartphone.module
+ */
+
+/**
+ * Implements hook_feeds_processor_targets_alter().
+ */
+function smartphone_feeds_processor_targets_alter(&$targets, $entity_type, $bundle) {
+  if ($entity_type == 'node') {
+    $targets['field_manufacturer:etid']['callback'] = '_smartphone_manufacturer_map_callback';
+  }
+}
+
+/**
+ * Callback to process mappings dynamically.
+ *
+ * @param (array) $source
+ *   Field mapper source settings.
+ * @param (object) $entity
+ *   An entity object, for instance a node object.
+ * @param (string) $target
+ *   A string identifying the target on the node.
+ * @param (string) $values
+ *   The value to populate the target with.
+ * @param (array) $mapping
+ *   Associative array of the mapping settings from the per mapping
+ *   configuration form.
+ */
+function _smartphone_manufacturer_map_callback($source, $entity, $target, $values, $mapping) {
+  $nodes = node_load_multiple(array(), 
+    array(
+      'title' => $values[0],
+      'type' => 'manufacturer'
+    )
+  );
+  // Load the first node returned from the database.
+  $node = reset($nodes);
+  if (!$node) {
+    global $user;
+
+    $node_manufacturer = new stdClass();
+    $node_manufacturer->title = $values[0];
+    $node_manufacturer->type = 'manufacturer';
+    node_object_prepare($node_manufacturer); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+    $node_manufacturer->language = LANGUAGE_NONE; // Or e.g. 'en' if locale is enabled.
+    $node_manufacturer->uid = $user->uid; 
+    $node_manufacturer->status = 1; //(1 or 0): published or not.
+    $node_manufacturer->promote = 0; //(1 or 0): promoted to front page.
+    $node_manufacturer->comment = 1; // 0 = comments disabled, 1 = read only, 2 = read/write.
+    
+    $node_manufacturer = node_submit($node_manufacturer); // Prepare node for saving
+    node_save($node_manufacturer);
+    $entity->field_manufacturer[LANGUAGE_NONE][0]['target_id'] = $node_manufacturer->nid;
+  }
+}
